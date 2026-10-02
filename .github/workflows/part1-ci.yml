@@ -78,8 +78,10 @@ jobs:
       - run: ./scripts/setup.sh --check
       - name: pytest (тесты части 1)
         # Полный набор, включая часть 2, проверяет джоба tests в part2-ci.yml.
+        # Запуск под coverage нужен шагу «отчёт о покрытии»: без .coverage
+        # он падает с «No data to report».
         run: >-
-          uv run pytest -v
+          uv run coverage run -m pytest -v
           tests/test_money.py
           tests/test_inventory.py
           tests/test_reporting.py
