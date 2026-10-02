@@ -17,6 +17,45 @@ TIER_DISCOUNTS = ((10, 5), (25, 10), (50, 15))
 REQUIRED_LINE_KEYS = ("sku", "qty", "unit_price_kopecks")
 
 
+def _parse_int(value: str | None, message: str) -> int | None:
+    """Parse an order field as an integer and report invalid input with a reason."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _validate_line(line: dict[str, str], index: int, seen_skus: set[str]) -> str | None:
+    """Validate a single order line, returning a reason or None."""
+    if not all(key in line for key in REQUIRED_LINE_KEYS):
+        return f"Line {index} is missing a required key."
+
+    sku = line.get("sku")
+    if not isinstance(sku, str) or not sku.strip():
+        return f"Line {index} has an empty sku."
+    if sku in seen_skus:
+        return f"Duplicate sku: {sku}."
+    seen_skus.add(sku)
+
+    qty = _parse_int(line.get("qty"), f"Line {index} has a non-numeric quantity.")
+    if qty is None:
+        return f"Line {index} has a non-numeric quantity."
+    if qty <= 0:
+        return f"Line {index} quantity must be greater than zero."
+
+    unit_price = _parse_int(
+        line.get("unit_price_kopecks"), f"Line {index} has a non-numeric unit price."
+    )
+    if unit_price is None:
+        return f"Line {index} has a non-numeric unit price."
+    if unit_price < 0:
+        return f"Line {index} price cannot be negative."
+
+    return None
+
+
 def validate_order(
     lines: list[dict[str, str]],
     promo_code: str = "",
@@ -28,31 +67,9 @@ def validate_order(
 
     seen_skus: set[str] = set()
     for index, line in enumerate(lines, start=1):
-        if not all(key in line for key in REQUIRED_LINE_KEYS):
-            return f"Line {index} is missing a required key."
-
-        sku = line.get("sku")
-        if not isinstance(sku, str) or not sku.strip():
-            return f"Line {index} has an empty sku."
-        if sku in seen_skus:
-            return f"Duplicate sku: {sku}."
-        seen_skus.add(sku)
-
-        qty_raw = line.get("qty")
-        try:
-            qty = int(qty_raw)
-        except (TypeError, ValueError):
-            return f"Line {index} has a non-numeric quantity."
-        if qty <= 0:
-            return f"Line {index} quantity must be greater than zero."
-
-        price_raw = line.get("unit_price_kopecks")
-        try:
-            unit_price = int(price_raw)
-        except (TypeError, ValueError):
-            return f"Line {index} has a non-numeric unit price."
-        if unit_price < 0:
-            return f"Line {index} price cannot be negative."
+        reason = _validate_line(line, index, seen_skus)
+        if reason is not None:
+            return reason
 
     if promo_code and promo_code not in PROMO_CODES:
         return "Unknown promo code."
@@ -100,5 +117,4 @@ def calculate_order_total(
 
     base = discounted_subtotal + shipping
     vat = percent_of(base, VAT_PERCENT)
-    total = base + vat
-    return total
+    return base + vat
